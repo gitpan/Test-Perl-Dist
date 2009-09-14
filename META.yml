@@ -1,6 +1,6 @@
 ---
 name: Test-Perl-Dist
-version: 0.200
+version: 0.201
 author:
   - 'Curtis Jewell <CSJewell@cpan.org>'
 abstract: Test module for Perl::Dist::WiX and subclasses
@@ -25,7 +25,7 @@ configure_requires:
 provides:
   Test::Perl::Dist:
     file: lib/Test/Perl/Dist.pm
-    version: 0.200
+    version: 0.201
 generated_by: Module::Build version 0.34
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
