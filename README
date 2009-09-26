@@ -1,4 +1,4 @@
-Test::Perl::Dist version 0.200
+Test::Perl::Dist version 0.202
 
 INSTALLATION
     To install this module, run the following commands:
@@ -20,7 +20,9 @@ INSTALLATION
             ./Build install
 
 DEPENDENCIES
-    TODO
+    This module requires perl 5.8.1, parent version 0.221, File::Remove
+    version 1.42, LWP::Online version 1.07, Test::More version 0.88, URI
+    version 1.40, and Win32 version 0.39.
 
 LICENSE AND COPYRIGHT
     Copyright (c) 2009, Curtis Jewell `<CSJewell@cpan.org>'. All rights
