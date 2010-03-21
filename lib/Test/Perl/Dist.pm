@@ -4,6 +4,7 @@ use strict;
 use warnings;
 use 5.008001;
 use Test::More 0.88 import => ['!done_testing'];
+use Test::Builder;
 use parent qw( Exporter );
 use English qw( -no_match_vars );
 use Scalar::Util qw( blessed );
@@ -15,10 +16,11 @@ use Win32 qw();
 use URI qw();
 
 our @EXPORT =
-  qw(test_run_dist test_add test_verify_files_short test_verify_files_medium test_verify_files_long test_verify_portability );
+  qw(test_run_dist test_add test_verify_files_short test_verify_files_medium
+  test_verify_files_long test_verify_portability test_cleanup);
 push @EXPORT, @Test::More::EXPORT;
 
-our $VERSION = '0.202';
+our $VERSION = '0.203';
 $VERSION = eval $VERSION; ##no critic(RequireConstantVersion)
 
 my $tests_completed = 0;
@@ -70,12 +72,15 @@ sub _paths {
 	my $download_dir = _make_path($download);
 	my $fragment_dir = _remake_path( catdir( $basedir, 'fragments' ) );
 	my $build_dir    = _remake_path( catdir( $basedir, 'build' ) );
+	my $tempenv_dir  = _remake_path( catdir( $basedir, 'tempdir' ) );
 	return (
 		output_dir   => $output_dir,
 		image_dir    => $image_dir,
 		download_dir => $download_dir,
 		build_dir    => $build_dir,
 		fragment_dir => $fragment_dir,
+		temp_dir     => $basedir,
+		tempenv_dir  => $tempenv_dir,
 	);
 } ## end sub _paths
 
@@ -89,17 +94,37 @@ sub _cpan_release {
 	}
 }
 
-sub _cpan {
-	if ( $ENV{PERL_TEST_PERLDIST_CPAN} ) {
-		return URI->new( $ENV{PERL_TEST_PERLDIST_CPAN} );
+sub _forceperl {
+	my $class = shift;
+	if ( defined $ENV{PERL_RELEASE_TEST_FORCEPERL} ) {
+		return ( forceperl => 1 );
+	} else {
+		return ();
 	}
-	my $path = rel2abs( catdir( 't', 'data', 'cpan' ) );
-	Test::More::ok( -d $path, 'Found CPAN directory' );
-	Test::More::ok( -d catdir( $path, 'authors', 'id' ),
-		'Found id subdirectory' );
-	$tests_completed += 2;
-	return URI::file->new( $path . q{\\} );
 }
+
+sub _force {
+	my $class = shift;
+	if ( defined $ENV{PERL_RELEASE_TEST_FORCE} ) {
+		return ( force => 1 );
+	} else {
+		return ();
+	}
+}
+
+##sub _cpan {
+##	if ( $ENV{PERL_TEST_PERLDIST_CPAN} ) {
+##		return URI->new( $ENV{PERL_TEST_PERLDIST_CPAN} );
+##	}
+##	my $path = rel2abs( catdir( 't', 'data', 'cpan' ) );
+##	Test::More::ok( -d $path, 'Found CPAN directory' );
+##	Test::More::ok( -d catdir( $path, 'authors', 'id' ),
+##		'Found id subdirectory' );
+##	$tests_completed += 2;
+##	return URI::file->new( $path . q{\\} );
+##}
+
+
 
 sub new_test_class_short {
 	my $self          = shift;
@@ -120,7 +145,8 @@ sub new_test_class_short {
 		$class_to_test );
 	my $test_object = eval {
 		my $obj = $test_class->new( $self->_paths($test_number),
-			$self->_cpan_release, @_ );
+			$self->_cpan_release(), $self->_forceperl(), $self->_force(),
+			@_ );
 		return $obj;
 	};
 	if ($EVAL_ERROR) {
@@ -142,6 +168,8 @@ sub new_test_class_short {
 	return $test_object;
 } ## end sub new_test_class_short
 
+
+
 sub new_test_class_medium {
 	my $self          = shift;
 	my $test_number   = shift;
@@ -155,23 +183,21 @@ sub new_test_class_medium {
 		plan( skip_all =>
 			  'Cannot be tested in a directory with an extension.' );
 	}
-	if ( not $ENV{RELEASE_TESTING} ) {
-		plan( skip_all => 'No RELEASE_TESTING: Skipping very long test' );
-	}
 
 	my $test_class =
 	  $self->create_test_class_medium( $test_number, $test_version,
 		$class_to_test );
 	my $test_object = eval {
 		$test_class->new( $self->_paths($test_number),
-			$self->_cpan_release, @_ );
+			$self->_cpan_release(), $self->_forceperl(), $self->_force(),
+			@_ );
 	};
 
 	if ($EVAL_ERROR) {
 		if ( blessed($EVAL_ERROR)
 			&& $EVAL_ERROR->isa('Exception::Class::Base') )
 		{
-			diag( $EVAL_ERROR->as_string );
+			diag( $EVAL_ERROR->as_string() );
 		} else {
 			diag($EVAL_ERROR);
 		}
@@ -186,6 +212,8 @@ sub new_test_class_medium {
 	return $test_object;
 } ## end sub new_test_class_medium
 
+
+
 sub new_test_class_long {
 	my $self          = shift;
 	my $test_number   = shift;
@@ -199,16 +227,14 @@ sub new_test_class_long {
 		plan( skip_all =>
 			  'Cannot be tested in a directory with an extension.' );
 	}
-	if ( not $ENV{RELEASE_TESTING} ) {
-		plan( skip_all => 'No RELEASE_TESTING: Skipping very long test' );
-	}
 
 	my $test_class =
 	  $self->create_test_class_long( $test_number, $test_version,
 		$class_to_test );
 	my $test_object = eval {
 		$test_class->new( $self->_paths($test_number),
-			$self->_cpan_release, @_ );
+			$self->_cpan_release(), $self->_forceperl(), $self->_force(),
+			@_ );
 	};
 
 	if ($EVAL_ERROR) {
@@ -229,6 +255,8 @@ sub new_test_class_long {
 
 	return $test_object;
 } ## end sub new_test_class_long
+
+
 
 sub test_run_dist {
 	my $dist = shift;
@@ -264,11 +292,15 @@ sub test_run_dist {
 	return;
 } ## end sub test_run_dist
 
+
+
 sub test_add {
 	$tests_completed++;
 
 	return;
 }
+
+
 
 sub test_verify_files_short {
 	my $test_number = shift;
@@ -283,6 +315,8 @@ sub test_verify_files_short {
 
 	return;
 } ## end sub test_verify_files_short
+
+
 
 sub test_verify_files_medium {
 	my $test_number = shift;
@@ -306,16 +340,29 @@ sub test_verify_files_medium {
 		'Found perl.exe',
 	);
 
-	# Toolchain files
-	ok( -f catfile( $test_dir, qw{ perl vendor lib LWP.pm } ),
-		'Found LWP.pm', );
+	if ( -f catfile( $test_dir, qw{ image portable.perl } ) ) {
 
-	# Custom installed file
-	ok( -f catfile( $test_dir, qw{ perl vendor lib Config Tiny.pm } ),
-		'Found Config::Tiny',
-	);
+		# Toolchain files
+		ok( -f catfile( $test_dir, qw{ perl site lib LWP.pm } ),
+			'Found LWP.pm', );
 
-	# Did we build 5.8.8?
+		# Custom installed file
+		ok( -f catfile( $test_dir, qw{ perl site lib Config Tiny.pm } ),
+			'Found Config::Tiny',
+		);
+	} else {
+
+		# Toolchain files
+		ok( -f catfile( $test_dir, qw{ perl vendor lib LWP.pm } ),
+			'Found LWP.pm', );
+
+		# Custom installed file
+		ok( -f catfile( $test_dir, qw{ perl vendor lib Config Tiny.pm } ),
+			'Found Config::Tiny',
+		);
+	}
+
+	# Did we build Perl correctly?
 	ok( -f catfile( $test_dir, qw{ perl bin }, $dll_file ),
 		'Found Perl DLL',
 	);
@@ -324,6 +371,8 @@ sub test_verify_files_medium {
 
 	return;
 } ## end sub test_verify_files_medium
+
+
 
 sub create_test_class_short {
 	my $self         = shift;
@@ -340,22 +389,21 @@ sub create_test_class_short {
 		###############################################################
 		# Configuration
 
-		sub ${answer}::app_name             { 'Test Perl'               }
-		sub ${answer}::app_ver_name         { 'Test Perl 1 alpha 1'     }
-		sub ${answer}::app_publisher        { 'Vanilla Perl Project'    }
-		sub ${answer}::app_publisher_url    { 'http://vanillaperl.org'  }
-		sub ${answer}::app_id               { 'testperl'                }
 
 		###############################################################
 		# Main Methods
 
 		sub ${answer}::new {
 			return shift->${test_class}::new(
-				perl_version => $test_version,
-				trace        => 1,
-				build_number => 1,
+				perl_version  => $test_version,
+				trace         => 1,
+				build_number  => 1,
 				app_publisher_url => 'http://vanillaperl.org',
-				tasklist     => [qw(final_initialization install_dmake)],
+				tasklist      => [qw(final_initialization install_dmake)],
+				app_ver_name  => 'Test Perl 1 alpha 1',
+				app_name      => 'Test Perl',
+				app_publisher => 'Vanilla Perl Project',
+				app_id        => 'testperl',
 				\@_,
 			);
 		}
@@ -364,6 +412,8 @@ EOF
 	eval $code;
 	return $answer;
 } ## end sub create_test_class_short
+
+
 
 sub create_test_class_medium {
 	my $self         = shift;
@@ -378,15 +428,6 @@ sub create_test_class_medium {
 		\@${answer}::ISA = ( "$test_class" );
 
 		###############################################################
-		# Configuration
-
-		sub ${answer}::app_name             { 'Test Perl'               }
-		sub ${answer}::app_ver_name         { 'Test Perl 1 alpha 1'     }
-		sub ${answer}::app_publisher        { 'Vanilla Perl Project'    }
-		sub ${answer}::app_publisher_url    { 'http://vanillaperl.org'  }
-		sub ${answer}::app_id               { 'testperl'                }
-
-		###############################################################
 		# Main Methods
 
 		sub ${answer}::new {
@@ -395,10 +436,13 @@ sub create_test_class_medium {
 				trace => 1,
 				build_number => 1,
 				app_publisher_url => 'http://vanillaperl.org',
-				tasklist => [ qw(
+				app_name      => 'Test Perl',
+				app_ver_name  => 'Test Perl 1 alpha 1',
+				app_publisher => 'Vanilla Perl Project',
+				app_id        => 'testperl',
+				tasklist      => [ qw(
 					final_initialization
 					install_c_toolchain
-					install_c_libraries
 					install_perl
 					install_perl_toolchain
 					test_distro
@@ -411,17 +455,27 @@ sub create_test_class_medium {
 
 		sub ${answer}::test_distro {
 			my \$self = shift;
-			\$self->install_distribution(
-				name             => 'ADAMK/Config-Tiny-2.12.tar.gz',
-				mod_name         => 'Config::Tiny',
-				makefilepl_param => ['INSTALLDIRS=vendor'],
-			);		
+			if (\$self->portable()) {
+				\$self->install_distribution(
+					name             => 'ADAMK/Config-Tiny-2.12.tar.gz',
+					mod_name         => 'Config::Tiny',
+					makefilepl_param => ['INSTALLDIRS=site'],
+				);
+			} else {
+				\$self->install_distribution(
+					name             => 'ADAMK/Config-Tiny-2.12.tar.gz',
+					mod_name         => 'Config::Tiny',
+					makefilepl_param => ['INSTALLDIRS=vendor'],
+				);
+			}
 			return 1;
 		}
 EOF
 
 	return $answer;
 } ## end sub create_test_class_medium
+
+
 
 sub create_test_class_long {
 	my $self         = shift;
@@ -436,15 +490,6 @@ sub create_test_class_long {
 		\@${answer}::ISA = ( "$test_class" );
 
 		###############################################################
-		# Configuration
-
-		sub ${answer}::app_name             { 'Test Perl'               }
-		sub ${answer}::app_ver_name         { 'Test Perl 1 alpha 1'     }
-		sub ${answer}::app_publisher        { 'Vanilla Perl Project'    }
-		sub ${answer}::app_publisher_url    { 'http://vanillaperl.org'  }
-		sub ${answer}::app_id               { 'testperl'                }
-
-		###############################################################
 		# Main Methods
 
 		sub ${answer}::new {
@@ -453,24 +498,38 @@ sub create_test_class_long {
 				trace => 1,
 				build_number => 1,
 				app_publisher_url => 'http://vanillaperl.org',
+				app_name          => 'Test Perl',
+				app_ver_name      => 'Test Perl 1 alpha 1',
+				app_publisher     => 'Vanilla Perl Project',
+				app_id            => 'testperl',
 				\@_,
 			);
 		}
 		
 		sub ${answer}::install_cpan_upgrades {
 			my \$self = shift;
-			\$self->Perl::Dist::WiX::install_cpan_upgrades();
-			\$self->install_distribution(
-				name             => 'ADAMK/Config-Tiny-2.12.tar.gz',
-				mod_name         => 'Config::Tiny',
-				makefilepl_param => ['INSTALLDIRS=vendor'],
-			);		
+			\$self->${test_class}::install_cpan_upgrades();
+			if (\$self->portable()) {
+				\$self->install_distribution(
+					name             => 'ADAMK/Config-Tiny-2.12.tar.gz',
+					mod_name         => 'Config::Tiny',
+					makefilepl_param => ['INSTALLDIRS=site'],
+				);
+			} else {
+				\$self->install_distribution(
+					name             => 'ADAMK/Config-Tiny-2.12.tar.gz',
+					mod_name         => 'Config::Tiny',
+					makefilepl_param => ['INSTALLDIRS=vendor'],
+				);
+			}
 			return 1;
 		}
 EOF
 
 	return $answer;
 } ## end sub create_test_class_long
+
+
 
 sub test_verify_files_long {
 	my $test_number = shift;
@@ -482,7 +541,8 @@ sub test_verify_files_long {
 	# C toolchain files
 	ok( -f catfile( $test_dir, qw{ c bin dmake.exe } ), 'Found dmake.exe',
 	);
-	ok( -f catfile( $test_dir, qw{ c bin startup Makefile.in } ),
+
+	ok( -f catfile( $test_dir, qw{ c bin startup startup.mk } ),
 		'Found startup',
 	);
 	ok( -f catfile( $test_dir, qw{ c bin pexports.exe } ),
@@ -494,14 +554,27 @@ sub test_verify_files_long {
 		'Found perl.exe',
 	);
 
-	# Toolchain files
-	ok( -f catfile( $test_dir, qw{ perl vendor lib LWP.pm } ),
-		'Found LWP.pm', );
+	if ( -f catfile( $test_dir, qw{ image portable.perl } ) ) {
 
-	# Custom installed file
-	ok( -f catfile( $test_dir, qw{ perl vendor lib Config Tiny.pm } ),
-		'Found Config::Tiny',
-	);
+		# Toolchain files
+		ok( -f catfile( $test_dir, qw{ perl site lib LWP.pm } ),
+			'Found LWP.pm', );
+
+		# Custom installed file
+		ok( -f catfile( $test_dir, qw{ perl site lib Config Tiny.pm } ),
+			'Found Config::Tiny',
+		);
+	} else {
+
+		# Toolchain files
+		ok( -f catfile( $test_dir, qw{ perl vendor lib LWP.pm } ),
+			'Found LWP.pm', );
+
+		# Custom installed file
+		ok( -f catfile( $test_dir, qw{ perl vendor lib Config Tiny.pm } ),
+			'Found Config::Tiny',
+		);
+	}
 
 	# Did we build Perl correctly?
 	ok( -f catfile( $test_dir, qw{ perl bin }, $dll_file ),
@@ -512,6 +585,8 @@ sub test_verify_files_long {
 
 	return;
 } ## end sub test_verify_files_long
+
+
 
 sub test_verify_portability {
 	my $test_number   = shift;
@@ -528,7 +603,7 @@ sub test_verify_portability {
 	ok( -f catfile( $test_dir, qw{ image portable.perl } ),
 		'Found portable file',
 	);
-	ok( -f catfile( $test_dir, qw{ image perl vendor lib Portable.pm } ),
+	ok( -f catfile( $test_dir, qw{ image perl site lib Portable.pm } ),
 		'Found Portable.pm',
 	);
 
@@ -536,6 +611,25 @@ sub test_verify_portability {
 
 	return;
 } ## end sub test_verify_portability
+
+
+
+sub test_cleanup {
+	my $test_number = shift;
+
+	if ( Test::Builder->new()->is_passing() ) {
+
+		diag('Removing build files on successful test.');
+		my $dir = catdir( 't', "tmp$test_number" );
+		File::Remove::remove( \1, $dir );
+	} else {
+		diag('Did not pass, so not removing files.');
+	}
+
+	return;
+} ## end sub test_cleanup
+
+
 
 sub done_testing {
 	my $additional_tests = shift || 0;
@@ -551,7 +645,7 @@ __END__
 
 =begin readme text
 
-Test::Perl::Dist version 0.202
+Test::Perl::Dist version 0.203
 
 =end readme
 
@@ -563,7 +657,7 @@ Test::Perl::Dist - Test module for Perl::Dist::WiX and subclasses.
 
 =head1 VERSION
 
-This document describes Test::Perl::Dist version 0.202
+This document describes Test::Perl::Dist version 0.203
 
 =begin readme
 
@@ -660,9 +754,6 @@ more than 5 minutes, a "medium" test installs perl and one additional module
 and can take about an hour, and a "long" test completes a full build, which 
 can take 4-8 hours on slow machines.
 
-Medium and long tests are skipped at this point unless $ENV{RELEASE_TESTING} 
-contains a true value.
-
 =head2 test_run_dist
 
 	test_run_dist( $dist );
@@ -696,6 +787,12 @@ filename of the dist being tested, as returned from output_base_filename.
 
 =head2 done_testing
 
+	test_cleanup(901);
+	
+This cleans up the build files if all tests have been successful.
+
+=head2 done_testing
+
 	done_testing();
 	
 	# If additional tests were completed.
@@ -716,11 +813,16 @@ provided to it by the module being tested.
 
 There are no configuration files.
 
-$ENV{RELEASE_TESTING} is checked for a true value if a medium or long 
-test is requested.
+$ENV{PERL_RELEASE_TEST_PERLDIST_CPAN} is used to point at a preferred 
+(or local - it can be a file:// URL) mirror for CPAN.
 
-There are other environment variables used - check the source for 
-details.
+If $ENV{PERL_RELEASE_TEST_FORCEPERL} is defined, it passes 
+forceperl => 1 to the classes being tested, which skips testing perl
+after compilation.
+
+If $ENV{PERL_RELEASE_TEST_FORCE} is defined, it passes 
+force => 1 to the classes being tested, which skips testing both
+perl and the additional modules installed.
 
 =for readme continue
 
@@ -756,12 +858,13 @@ Curtis Jewell  C<< <CSJewell@cpan.org> >>
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2009, Curtis Jewell C<< <CSJewell@cpan.org> >>. 
+Copyright (c) 2009-2010, Curtis Jewell C<< <CSJewell@cpan.org> >>. 
 All rights reserved.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself, either version
-5.8.1 or any later version. See L<perlartistic> and L<perlgpl>.
+5.8.1 or any later version. See L<perlartistic|perlartistic>
+and L<perlgpl|perlgpl>.
 
 The full text of the license can be found in the
 LICENSE file included with this module.

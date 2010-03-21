@@ -1,4 +1,4 @@
-Test::Perl::Dist version 0.202
+Test::Perl::Dist version 0.203
 
 INSTALLATION
     To install this module, run the following commands:
@@ -25,7 +25,7 @@ DEPENDENCIES
     version 1.40, and Win32 version 0.39.
 
 LICENSE AND COPYRIGHT
-    Copyright (c) 2009, Curtis Jewell `<CSJewell@cpan.org>'. All rights
+    Copyright (c) 2009-2010, Curtis Jewell `<CSJewell@cpan.org>'. All rights
     reserved.
 
     This module is free software; you can redistribute it and/or modify it
